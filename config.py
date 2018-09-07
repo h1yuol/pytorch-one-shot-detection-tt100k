@@ -1,9 +1,6 @@
 from easydict import EasyDict as edict 
 from pathlib import Path
 
-
-
-
 __C = edict()
 
 __C.PATH = edict()
