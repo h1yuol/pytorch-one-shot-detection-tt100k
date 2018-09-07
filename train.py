@@ -9,7 +9,7 @@ from lib.datasets.data_loader import get_dataloaders
 if __name__ == '__main__':
     model_path = '/home/huangyucheng/MYDATA/EXPERIMENTS/FasterRCNN/2gpu_0831/res101/tt100k/faster_rcnn_1_50_2032.pth'
 
-    margin = 0.1
+    margin = 3.0
     model = one_shot_resnet(128, model_path, margin, pretrained=True)
 
     model.create_architecture()
