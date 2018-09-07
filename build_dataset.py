@@ -32,7 +32,7 @@ def crop_resize_save(phase,sample,objects,size=cfg.TRAIN.sign_input_size):
         bbox = obj['bbox']
         category = obj['category']
         img_obj = img.crop(box=(bbox['xmin'],bbox['ymin'],bbox['xmax'],bbox['ymax']))
-        img_obj = img_obj.resize((size, size), Image.BILINEAR)
+        # img_obj = img_obj.resize((size, size), Image.BILINEAR)
         (cfg.PATH.sign_data_dir / phase / category).mkdir(parents=True,exist_ok=True)
         img_obj.save(str(cfg.PATH.sign_data_dir / phase / category / (sample['img_id']+'_'+str(objIdx) + '.jpg')))
 
