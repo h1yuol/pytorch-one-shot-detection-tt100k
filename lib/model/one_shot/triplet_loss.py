@@ -34,7 +34,8 @@ def get_valid_positive_mask(labels):
 
 	label_equal = torch.eq(labels.unsqueeze(1), labels.unsqueeze(0))
 
-	mask = indices_not_equal & label_equal
+	mask = (indices_not_equal.cuda() & label_equal.cuda())
+	# mask = (indices_not_equal.int() + label_equal.int()).clamp(min=0,max=1).byte()
 	return mask
 
 def get_valid_negative_mask(labels):
@@ -48,7 +49,8 @@ def get_valid_negative_mask(labels):
 
 	label_not_equal = torch.ne(labels.unsqueeze(1), labels.unsqueeze(0))
 
-	mask = indices_not_equal & label_not_equal
+	mask = (indices_not_equal.cuda() & label_not_equal.cuda())
+	# mask = (indices_not_equal.int() + label_not_equal.int()).clamp(min=0,max=1).byte()
 	return mask
 
 
