@@ -14,11 +14,12 @@ class TripletLoss(nn.Module):
   Args:
       margin (float): margin for triplet.
   """
-  def __init__(self, margin=0.3, mutual_flag = False):
+  def __init__(self, margin=0.3, mutual_flag = False, an_weight=10):
     super(TripletLoss, self).__init__()
     self.margin = margin
     self.ranking_loss = nn.MarginRankingLoss(margin=margin)
     self.mutual = mutual_flag
+    self.an_weight = an_weight
 
   def forward(self, inputs, targets):
     """
@@ -42,18 +43,21 @@ class TripletLoss(nn.Module):
     dist_ap = torch.cat(dist_ap)
     dist_an = torch.cat(dist_an)
     # Compute ranking hinge loss
-    y = torch.ones_like(dist_an)
-    loss = self.ranking_loss(dist_an, dist_ap, y)
+    # y = torch.ones_like(dist_an)
+    # loss = self.ranking_loss(dist_an, dist_ap, y)
+    loss = (dist_ap - dist_an + self.margin).clamp(min=0).mean()
+    # loss += - self.an_weight * dist_an.min()
     if self.mutual:
-      return loss, dist
+      return loss, dist, dist_ap, dist_an
     return loss
 
 class one_shot_resnet(nn.Module):
-  def __init__(self, embedding_dim, model_path, margin, pretrained=False):
+  def __init__(self, embedding_dim, model_path, margin, pretrained=False, norm=False):
     self.model_path = model_path
     self.pretrained = pretrained
     self.embedding_dim = embedding_dim
     self.margin = margin
+    self.norm = norm
 
     super(one_shot_resnet, self).__init__()
 
@@ -98,36 +102,36 @@ class one_shot_resnet(nn.Module):
     self.Linear_top = nn.Linear(2048, self.embedding_dim)
 
     # Fix blocks
-    for p in self.RCNN_base.parameters(): p.requires_grad = False
+    # for p in self.RCNN_base.parameters(): p.requires_grad = False
 
-    def set_bn_fix(m):
-      classname = m.__class__.__name__
-      if classname.find('BatchNorm') != -1:
-        for p in m.parameters(): p.requires_grad = False
+    # def set_bn_fix(m):
+    #   classname = m.__class__.__name__
+    #   if classname.find('BatchNorm') != -1:
+    #     for p in m.parameters(): p.requires_grad = False
 
-    self.RCNN_base.apply(set_bn_fix)
-    self.RCNN_top.apply(set_bn_fix)
+    # self.RCNN_base.apply(set_bn_fix)
+    # self.RCNN_top.apply(set_bn_fix)
 
-    self.tripletloss = TripletLoss(margin=self.margin)
+    self.tripletloss = TripletLoss(margin=self.margin, mutual_flag=True)
 
   def _head_to_tail(self, pool5):
     fc7 = self.RCNN_top(pool5).mean(3).mean(2)
     return fc7
 
-  def train(self, mode=True):
-    # Override train so that the training mode is set as we want
-    nn.Module.train(self, mode)
-    if mode:
-      # Set fixed blocks to be in eval mode
-      self.RCNN_base.eval()
+  # def train(self, mode=True):
+  #   # Override train so that the training mode is set as we want
+  #   nn.Module.train(self, mode)
+  #   if mode:
+  #     # Set fixed blocks to be in eval mode
+  #     self.RCNN_base.eval()
 
-      def set_bn_eval(m):
-        classname = m.__class__.__name__
-        if classname.find('BatchNorm') != -1:
-          m.eval()
+  #     def set_bn_eval(m):
+  #       classname = m.__class__.__name__
+  #       if classname.find('BatchNorm') != -1:
+  #         m.eval()
 
-      self.RCNN_base.apply(set_bn_eval)
-      self.RCNN_top.apply(set_bn_eval)
+  #     self.RCNN_base.apply(set_bn_eval)
+  #     self.RCNN_top.apply(set_bn_eval)
 
   def forward(self, im_data, labels):
     """
@@ -145,11 +149,16 @@ class one_shot_resnet(nn.Module):
     assert pooled_feat.size() == (batch_size, 2048)
 
     embeddings = self.Linear_top(pooled_feat)
+    # embeddings = pooled_feat
+
+    if self.norm:
+      embeddings_norm = torch.norm(embeddings, p=2, dim=1, keepdim=True)
+      embeddings = embeddings / embeddings_norm
 
     # loss = batch_hard_triplet_loss(labels, embeddings, margin, squared=False)
-    loss = self.tripletloss(embeddings, labels)
+    loss, dists, dist_ap, dist_an = self.tripletloss(embeddings, labels)
 
-    return embeddings, loss
+    return embeddings, loss, dist_ap, dist_an
 
   def _init_weights(self):
     def normal_init(m, mean, stddev, truncated=False):

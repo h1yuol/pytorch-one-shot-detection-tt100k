@@ -30,22 +30,36 @@ class MyBatchSampler(Sampler):
             classIdx = sample[1]
             self.classIdx2sampleIdx[classIdx] = self.classIdx2sampleIdx.get(classIdx, []) + [sampleIdx]
         self.classIdxList = list(filter(lambda classIdx: len(self.classIdx2sampleIdx[classIdx])>self.K, list(self.classIdx2sampleIdx.keys())))
-        self.num_samples = sum([len(self.classIdx2sampleIdx[classIdx]) for classIdx in self.classIdxList])
-        self.num_batch = int(self.num_samples / (num_class * num_sample_per_class))
+        self.enlarge = 16
+        # self.num_samples = sum([len(self.classIdx2sampleIdx[classIdx]) for classIdx in self.classIdxList])
+        # self.num_batch = int(self.num_samples / (num_class * num_sample_per_class))
 
     def __iter__(self):
-        for __ in range(self.num_batch):
+        shuffled_classIdxList = []
+        for __ in range(self.enlarge):
+            shuffled_classIdxList += [self.classIdxList[i] for i in torch.randperm(len(self.classIdxList))]
+        for i in range(self.P, len(shuffled_classIdxList), self.P):
             batch = []
-            chosen_classeIdxs = [self.classIdxList[i] for i in torch.randperm(len(self.classIdxList))[:self.P]]
+            chosen_classeIdxs = shuffled_classIdxList[i-self.P:i]
             for classIdx in chosen_classeIdxs:
                 sampleIdxList = self.classIdx2sampleIdx[classIdx]
                 batch += [sampleIdxList[i] for i in torch.randperm(len(sampleIdxList))[:self.K]]
-            assert len(batch) == self.P * self.K, (len(batch), self.P * self.K)
+            assert len(batch) == self.P * self.K, (len(batch), self.P * self.K, len(chosen_classeIdxs))
             np.random.shuffle(batch)
             yield batch
 
+        # for __ in range(self.num_batch):
+        #     batch = []
+        #     chosen_classeIdxs = [self.classIdxList[i] for i in torch.randperm(len(self.classIdxList))[:self.P]]
+        #     for classIdx in chosen_classeIdxs:
+        #         sampleIdxList = self.classIdx2sampleIdx[classIdx]
+        #         batch += [sampleIdxList[i] for i in torch.randperm(len(sampleIdxList))[:self.K]]
+        #     assert len(batch) == self.P * self.K, (len(batch), self.P * self.K)
+        #     np.random.shuffle(batch)
+        #     yield batch
+
     def __len__(self):
-        return self.num_samples
+        return (self.enlarge * len(self.classIdxList)) * self.K
 
 def get_dataloaders(num_workers, P, K, phaseList):
     data_transforms = {
@@ -82,7 +96,7 @@ def get_dataloaders(num_workers, P, K, phaseList):
             ) for x in phaseList
     }
 
-    dataset_sizes = {x: len(image_datasets[x]) for x in phaseList }  # used for averaging loss term
+    dataset_sizes = {x: len(samplers[x]) for x in phaseList }  # used for averaging loss term
 
     return dataloaders, dataset_sizes
 
