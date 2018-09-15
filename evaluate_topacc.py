@@ -55,30 +55,40 @@ class gallerySampler(Sampler):
         - num_class: # of different classes
         - num_sample_per_class: # of samples for each class
     """
-    def __init__(self, samples, num_class, num_sample_per_class):
+    def __init__(self, samples, selected_classIdxList):
         self.samples = samples
-        self.P = num_class
-        self.K = num_sample_per_class
         self.classIdx2sampleIdx = {}
         for sampleIdx,sample in enumerate(samples):
             classIdx = sample[1]
             self.classIdx2sampleIdx[classIdx] = self.classIdx2sampleIdx.get(classIdx, []) + [sampleIdx]
         self.galleryIdxList = [sampleIdxList[0] for sampleIdxList in self.classIdx2sampleIdx.values()]
-        self.classIdxList = list(filter(lambda classIdx: len(self.classIdx2sampleIdx[classIdx])>self.K, list(self.classIdx2sampleIdx.keys())))
+        # self.classIdxList = list(filter(lambda classIdx: len(self.classIdx2sampleIdx[classIdx])>self.K, list(self.classIdx2sampleIdx.keys())))
+        self.classIdxList = selected_classIdxList
+        self.indices = []
+        for c in self.classIdxList:
+            self.indices += self.classIdx2sampleIdx[c]
+
 
     def __iter__(self):
-        for i in range(self.P, len(self.classIdxList), self.P):
-            batch = []
-            chosen_classeIdxs = self.classIdxList[i-self.P:i]
-            for classIdx in chosen_classeIdxs:
-                sampleIdxList = self.classIdx2sampleIdx[classIdx][1:]
-                batch += [sampleIdxList[i] for i in torch.randperm(len(sampleIdxList))[:self.K]]
-            assert len(batch) == self.P * self.K, (len(batch), self.P * self.K, len(chosen_classeIdxs))
-            np.random.shuffle(batch)
-            yield batch
+        np.random.shuffle(self.indices)
+        for idx in self.indices:
+            yield idx
+
+
+
+        # for i in range(self.P, len(self.classIdxList), self.P):
+        #     batch = []
+        #     chosen_classeIdxs = self.classIdxList[i-self.P:i]
+        #     for classIdx in chosen_classeIdxs:
+        #         sampleIdxList = self.classIdx2sampleIdx[classIdx][1:]
+        #         batch += [sampleIdxList[i] for i in torch.randperm(len(sampleIdxList))[:self.K]]
+        #     assert len(batch) == self.P * self.K, (len(batch), self.P * self.K, len(chosen_classeIdxs))
+        #     np.random.shuffle(batch)
+        #     yield batch
 
     def __len__(self):
-        return len(self.classIdxList) * self.K
+        return len(self.indices)
+        # return len(self.classIdxList) * self.K
 
 class constSampler(Sampler):
     def __init__(self, indices):
@@ -89,7 +99,7 @@ class constSampler(Sampler):
         return len(self.indices)
 
 
-def get_test_dataset(num_workers, P, K):
+def get_test_dataset(num_workers, batch_size, phase="test"):
     data_transforms = {
         'train': transforms.Compose([
                 transforms.Resize([cfg.TRAIN.sign_input_size, cfg.TRAIN.sign_input_size]),
@@ -107,15 +117,18 @@ def get_test_dataset(num_workers, P, K):
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]),
     }
-    test_ds = ImageFolder(str(cfg.PATH.sign_data_dir/"test"), data_transforms["test"])
-    # train_ds = ImageFolder(str(cfg.PATH.sign_data_dir/"train"), data_transforms["train"])
-    # selected_classes = list(set(test_ds) & set(train_ds))
+    test_ds = ImageFolder(str(cfg.PATH.sign_data_dir/phase), data_transforms[phase])
+    train_ds = ImageFolder(str(cfg.PATH.sign_data_dir/"train"), data_transforms["train"])
+    selected_classes = list(set(test_ds.classes) & set(train_ds.classes))
+    selected_classIdxList = [test_ds.class_to_idx[c] for c in selected_classes]
 
-    sampler = gallerySampler(test_ds.samples, P, K)
+    sampler = gallerySampler(test_ds.samples, selected_classIdxList)
+    print('# of class: {}, # of instances: {}'.format(len(sampler.classIdxList), len(sampler)))
 
     dataloader = torch.utils.data.DataLoader(
                 test_ds, 
-                batch_sampler=sampler,
+                batch_size=batch_size,
+                sampler=sampler,
                 num_workers=num_workers,
             )
     galleryLoader = torch.utils.data.DataLoader(
@@ -147,9 +160,9 @@ def compute_mat_dist(a,b,squared=False):
 if __name__ == '__main__':
     args = parse_args()
 
-    P, K = 1, cfg.TRAIN.K
-
-    dataloader, galleryLoader, sampler, test_ds = get_test_dataset(args.num_workers, P, K)
+    # P, K = 1, cfg.TRAIN.K
+    batch_size = 64
+    phaseList = ['test','other']
 
     im_data = torch.FloatTensor(1).cuda()
     labels = torch.FloatTensor(1).cuda()
@@ -158,44 +171,48 @@ if __name__ == '__main__':
     labels = Variable(labels)
     gallery_labels = Variable(gallery_labels)
 
-    model_path = args.load_name
-    norm = cfg.TRAIN.norm
-    embedding_dim = cfg.TRAIN.embedding_dim
-    margin = args.margin
-    model = one_shot_resnet(embedding_dim, model_path, margin, pretrained=False, norm=norm,onlyEmbeddings=True)
+    for phase in phaseList:
 
-    model.eval_create_architecture()
+        dataloader, galleryLoader, sampler, test_ds = get_test_dataset(args.num_workers, batch_size, phase)
 
-    output_dir = cfg.PATH.experiment_dir / args.net
-    state_dict = torch.load(str(output_dir/args.load_name))
-    model.load_state_dict(state_dict['model'])
-    model.cuda()
+        model_path = args.load_name
+        norm = cfg.TRAIN.norm
+        embedding_dim = cfg.TRAIN.embedding_dim
+        margin = args.margin
+        model = one_shot_resnet(embedding_dim, model_path, margin, pretrained=False, norm=norm,onlyEmbeddings=True)
 
-    model.eval()
-    # get gallery
-    data = next(iter(galleryLoader))
-    im_data.data.resize_(data[0].size()).copy_(data[0])
-    labels.data.resize_(data[1].size()).copy_(data[1])
-    gallery_labels.data.resize_(data[1].size()).copy_(data[1])
-    gallery_embeddings = model(im_data, labels)
+        model.eval_create_architecture()
 
-    # embed()
+        output_dir = cfg.PATH.experiment_dir / args.net
+        state_dict = torch.load(str(output_dir/args.load_name))
+        model.load_state_dict(state_dict['model'])
+        model.cuda()
 
-    accus = []
-    for step,data in tqdm(enumerate(dataloader)):
+        model.eval()
+        # get gallery
+        data = next(iter(galleryLoader))
         im_data.data.resize_(data[0].size()).copy_(data[0])
         labels.data.resize_(data[1].size()).copy_(data[1])
-        # batch_size = labels.size(0)
+        gallery_labels.data.resize_(data[1].size()).copy_(data[1])
+        gallery_embeddings = model(im_data, labels)
 
-        embeddings = model(im_data, labels)
-        dists = compute_mat_dist(embeddings, gallery_embeddings)
-        predicts_indices = dists.argmin(dim=1)
-        predicts = gallery_labels[predicts_indices]
+        # embed()
 
-        accuracy = (predicts.eq(labels)).float().mean().item()
-        accus.append(accuracy)
-    print("Top 1 accuracy: {:.4g}".format(np.mean(accus)))
-    embed()
+        accus = []
+        for step,data in tqdm(enumerate(dataloader)):
+            im_data.data.resize_(data[0].size()).copy_(data[0])
+            labels.data.resize_(data[1].size()).copy_(data[1])
+            # batch_size = labels.size(0)
+
+            embeddings = model(im_data, labels)
+            dists = compute_mat_dist(embeddings.data, gallery_embeddings.data)
+            predicts_indices = dists.argmin(dim=1)
+            predicts = gallery_labels.data[predicts_indices]
+
+            accuracy = (predicts.eq(labels.data)).float().mean().item()
+            accus.append(accuracy)
+        print("{}, Top 1 accuracy: {:.4g}".format(phase, np.mean(accus)))
+        del gallery_embeddings
 
 
 
