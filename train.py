@@ -243,7 +243,7 @@ if __name__ == '__main__':
                 optimizer.zero_grad()
 
                 #forward
-                embeddings, loss, dist_ap, dist_an = model(im_data, labels)
+                embeddings, loss, dists, dist_ap, dist_an = model(im_data, labels)
                 if phase == 'train':
                     loss.backward()
                     optimizer.step()

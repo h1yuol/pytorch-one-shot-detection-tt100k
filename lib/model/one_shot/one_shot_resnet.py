@@ -52,12 +52,13 @@ class TripletLoss(nn.Module):
     return loss
 
 class one_shot_resnet(nn.Module):
-  def __init__(self, embedding_dim, model_path, margin, pretrained=False, norm=False):
+  def __init__(self, embedding_dim, model_path, margin, pretrained=False, norm=False, onlyEmbeddings=False):
     self.model_path = model_path
     self.pretrained = pretrained
     self.embedding_dim = embedding_dim
     self.margin = margin
     self.norm = norm
+    self.onlyEmbeddings = onlyEmbeddings
 
     super(one_shot_resnet, self).__init__()
 
@@ -151,6 +152,9 @@ class one_shot_resnet(nn.Module):
     embeddings = self.Linear_top(pooled_feat)
     # embeddings = pooled_feat
 
+    if self.onlyEmbeddings:
+      return embeddings
+
     if self.norm:
       embeddings_norm = torch.norm(embeddings, p=2, dim=1, keepdim=True)
       embeddings = embeddings / embeddings_norm
@@ -158,7 +162,7 @@ class one_shot_resnet(nn.Module):
     # loss = batch_hard_triplet_loss(labels, embeddings, margin, squared=False)
     loss, dists, dist_ap, dist_an = self.tripletloss(embeddings, labels)
 
-    return embeddings, loss, dist_ap, dist_an
+    return embeddings, loss, dists, dist_ap, dist_an
 
   def _init_weights(self):
     def normal_init(m, mean, stddev, truncated=False):
@@ -173,6 +177,9 @@ class one_shot_resnet(nn.Module):
         m.bias.data.zero_()
 
     normal_init(self.Linear_top, 0, 0.01, False)
+
+  def eval_create_architecture(self):
+    self._init_modules()
 
   def create_architecture(self):
     self._init_modules()
