@@ -25,6 +25,14 @@ __C.TRAIN.bias_decay = False
 __C.TRAIN.weight_decay = 5e-4
 __C.TRAIN.momentum = 0.9
 
+__C.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED = True
+__C.TRAIN.BBOX_NORMALIZE_MEANS = (0.0, 0.0, 0.0, 0.0)
+__C.TRAIN.BBOX_NORMALIZE_STDS = (0.1, 0.1, 0.2, 0.2)
+
+__C.TEST = edict()
+__C.TEST.BBOX_REG = True
+
+
 __C.POOLING_MODE = 'align'
 __C.CROP_RESIZE_WITH_MAX_POOL = True
 __C.POOLING_SIZE = 7

@@ -50,7 +50,8 @@ class tt100k(imdb):
 #         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
 		import json
 		annos = json.loads(open(os.path.join(self._data_path,'annotations.json')).read())
-		self._classes = tuple(['__background__'] + sorted(annos['types']))
+		# self._classes = tuple(['__background__'] + sorted(annos['types']))
+		self._classes = json.loads(open(str(cfg.DATA_DIR+'/tt100k/data/all_classes.json')).read())
 		self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
 		self._image_ext = '.jpg'
 		self._image_index = self._get_img_ids()

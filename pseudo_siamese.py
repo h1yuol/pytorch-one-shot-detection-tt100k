@@ -17,6 +17,8 @@ from model.roi_crop.modules.roi_crop import _RoICrop
 from model.roi_align.modules.roi_align import RoIAlignAvg
 from model.rpn.proposal_target_layer_cascade import _ProposalTargetLayer
 from model.utils.net_utils import _smooth_l1_loss, _crop_pool_layer, _affine_grid_gen, _affine_theta
+from model.rpn.bbox_transform import bbox_transform_inv
+from model.rpn.bbox_transform import clip_boxes
 
 from model.faster_rcnn.resnet import resnet101
 
@@ -24,7 +26,7 @@ from roi_data_layer.roidb import combined_roidb
 from roi_data_layer.roibatchLoader import roibatchLoader
 
 from config import cfg
-from utils import compute_mat_dist
+from utils import compute_mat_dist, computeIOU_torch
 import pdb
 
 try:
@@ -278,7 +280,7 @@ if __name__ == '__main__':
 
   with torch.no_grad():
     model.eval()
-    for i in range(1):
+    for i in range(num_images):
       data = next(data_iter)
       im_data.data.resize_(data[0].size()).copy_(data[0])
       im_info.data.resize_(data[1].size()).copy_(data[1])
@@ -286,6 +288,33 @@ if __name__ == '__main__':
       num_boxes.data.resize_(data[3].size()).copy_(data[3])
 
       predict_labels, predict_not_background, rois, bbox_pred = model(im_data, im_info, gt_boxes, num_boxes)
+
+      boxes = rois.data[:, :, 1:5]
+      if cfg.TEST.BBOX_REG:
+        # Apply bounding-box regression deltas
+        box_deltas = bbox_pred.data
+        if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
+        # Optionally normalize targets by a precomputed mean and stdev
+          box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS).cuda() \
+                     + torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS).cuda()
+          box_deltas = box_deltas.view(1, -1, 4)
+
+        pred_boxes = bbox_transform_inv(boxes, box_deltas, 1)
+        pred_boxes = clip_boxes(pred_boxes, im_info.data, 1)
+
+      # pred_boxes /= data[1][0][2].item()
+
+      num_box = num_boxes[0].item()
+      iou = computeIOU_torch(pred_boxes[0], gt_boxes[0,:num_box,:4])
+
+      maxIou, maxInd = iou.max(dim=0, keepdim=True)
+
+      print(maxIou)
+      print(maxInd)
+      tmp = torch.zeros(222).int()
+      tmp[predict_labels * predict_not_background.long()] = 1
+      print(torch.arange(222)[tmp==1])
+
 
       embed()
 
