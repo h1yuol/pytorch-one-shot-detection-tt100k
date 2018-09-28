@@ -66,18 +66,50 @@ def test_crop_resize_save():
     sample = list(filter(lambda sample: sample['img_id']=='57154', imageList))[0]
     crop_resize_save('train', sample, annotations['imgs'][sample['img_id']]['objects'])
 
+# ---------------------------------------------
+
+def crop_gallery(path, obj):
+    img = Image.open(str(cfg.PATH.dataset_dir / path))
+    bbox = obj['bbox']
+    category = obj['category']
+    img_obj = img.crop(box=(bbox['xmin'],bbox['ymin'],bbox['xmax'],bbox['ymax']))
+    (cfg.PATH.root_dir / 'data' / 'gallery' / category).mkdir(parents=True, exist_ok=True)
+    img_obj.save(str(cfg.PATH.root_dir / 'data' / 'gallery' / category / "{}.png".format(category)))
+
+def build_gallery():
+    className2imgDict = json.loads(open(str(cfg.PATH.dataset_dir/'className2imgDict.json')).read())
+    lst = []
+    for className in tqdm(className2imgDict):
+        flag = False
+        for imgDict in className2imgDict[className]:
+            if not imgDict['path'].startswith('test/'):
+                flag = True
+                crop_gallery(imgDict['path'], imgDict['object'])
+                break
+        if not flag:
+            lst.append(className)
+            imgDict = className2imgDict[className][0]
+            crop_gallery(imgDict['path'], imgDict['object'])
+    print("The following classes only has test-dataset gallery:")
+    print(lst)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--build', default='phase', help='specify what you want to do')
     parser.add_argument('--phase', default='train+test', help='specify the dataset you want to build')
     args = parser.parse_args()
 
-    phaseList = args.phase.split('+')
+    if args.build == 'phase':
+        phaseList = args.phase.split('+')
 
-    for phase in phaseList:
-        if phase not in ['train','test','other']:
-            print("You entered wrong phase: {}".format(phase))
-            continue
-        else :
-            build(phase)
+        for phase in phaseList:
+            if phase not in ['train','test','other']:
+                print("You entered wrong phase: {}".format(phase))
+                continue
+            else :
+                build(phase)
+    elif args.build == 'gallery':
+        build_gallery()
 
 

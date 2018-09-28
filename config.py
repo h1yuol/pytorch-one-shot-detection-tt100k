@@ -25,7 +25,10 @@ __C.TRAIN.bias_decay = False
 __C.TRAIN.weight_decay = 5e-4
 __C.TRAIN.momentum = 0.9
 
-__C.POOLING_MODE = 'crop'
+__C.POOLING_MODE = 'align'
+__C.CROP_RESIZE_WITH_MAX_POOL = True
+__C.POOLING_SIZE = 7
+__C.PIXEL_MEANS = [102.9801, 115.9465, 122.7717]
 
 
 cfg = __C

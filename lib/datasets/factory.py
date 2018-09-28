@@ -11,12 +11,17 @@ from __future__ import division
 from __future__ import print_function
 
 __sets = {}
+from datasets.tt100k import tt100k
 from datasets.pascal_voc import pascal_voc
 from datasets.coco import coco
 from datasets.imagenet import imagenet
 from datasets.vg import vg
 
 import numpy as np
+
+for split in ['train','test','val']:
+    name = 'tt100k_{}'.format(split)
+    __sets[name] = (lambda split=split: tt100k(split))
 
 # Set up voc_<year>_<split>
 for year in ['2007', '2012']:

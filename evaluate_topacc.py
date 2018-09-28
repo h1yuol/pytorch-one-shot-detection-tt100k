@@ -19,6 +19,7 @@ from torch.autograd import Variable
 from lib.model.one_shot.one_shot_resnet import one_shot_resnet
 
 from config import cfg
+from utils import compute_mat_dist
 
 def parse_args():
     import argparse
@@ -66,7 +67,7 @@ class gallerySampler(Sampler):
         self.classIdxList = selected_classIdxList
         self.indices = []
         for c in self.classIdxList:
-            self.indices += self.classIdx2sampleIdx[c]
+            self.indices += self.classIdx2sampleIdx[c][1:]
 
 
     def __iter__(self):
@@ -139,23 +140,23 @@ def get_test_dataset(num_workers, batch_size, phase="test"):
 
     return dataloader, galleryLoader, sampler, test_ds
 
-def compute_mat_dist(a,b,squared=False):
-    """
-    Input 2 embedding matrices and output distance matrix
-    """
-    assert a.size(1) == b.size(1)
-    dot_product = a.mm(b.t())
-    a_square = torch.pow(a, 2).sum(dim=1, keepdim=True)
-    b_square = torch.pow(b, 2).sum(dim=1, keepdim=True)
-    dist = a_square - 2*dot_product + b_square.t()
-    dist = dist.clamp(min=0)
-    if not squared:
-        epsilon = 1e-12
-        mask = (dist.eq(0))
-        dist += epsilon * mask.float()
-        dist = dist.sqrt()
-        dist *= (1-mask.float())
-    return dist
+# def compute_mat_dist(a,b,squared=False):
+#     """
+#     Input 2 embedding matrices and output distance matrix
+#     """
+#     assert a.size(1) == b.size(1)
+#     dot_product = a.mm(b.t())
+#     a_square = torch.pow(a, 2).sum(dim=1, keepdim=True)
+#     b_square = torch.pow(b, 2).sum(dim=1, keepdim=True)
+#     dist = a_square - 2*dot_product + b_square.t()
+#     dist = dist.clamp(min=0)
+#     if not squared:
+#         epsilon = 1e-12
+#         mask = (dist.eq(0))
+#         dist += epsilon * mask.float()
+#         dist = dist.sqrt()
+#         dist *= (1-mask.float())
+#     return dist
 
 if __name__ == '__main__':
     args = parse_args()
